@@ -1,5 +1,7 @@
 #!/bin/bash
 
+#  UGV (Unmanned Ground Vehicle):
+
 # Скрипт начинается с shebang (также называемый hashbang) ((hash)!/bin/bash),
 # который указывает, что скрипт должен быть выполнен с помощью bash shell (Bourne Again SHell) .
 # Должна быть ПЕРВОЙ строкой в файле
@@ -197,10 +199,6 @@ for line in file:lines() do
   print(line)
 end
 
-# Добавление нового параметра:
-# Если параметр не был найден, добавляет его в конец
-# mv "$3.bak" "$3" Заменяет оригинальный файл обработанной версией
-
 if not made_change then
   print(key.."="..value)
 end
@@ -208,23 +206,48 @@ EOF
 mv "$3.bak" "$3"
 }
 
+# Добавление нового параметра:
+# Если параметр не был найден, добавляет его в конец
+# mv "$3.bak" "$3" Заменяет оригинальный файл обработанной версией
 
+# Затем мы используем эту функцию для установки двух параметров: dtparam=uart0 и dtparam i2c_arm=on.
 
-
-
-
-
+# set_config_var "dtparam" "uart0=on" "$CONFIG"
+# set_config_var "dtparam" "i2c_arm=on" "$CONFIG"
 
 set_config_var dtparam=uart0 on $CONFIG
-# set_config_var dtparam i2c_arm=on $CONFIG
+set_config_var dtparam=i2c_arm on $CONFIG
 
-# if is_pifive ; then
-#   echo "# pi5: skip step"
-# else
-echo "# Add dtoverlay=disable-bt to /boot/firmware/config.txt"
-if ! grep -q 'dtoverlay=disable-bt' /boot/firmware/config.txt; then
+# dtparam=uart0=on
+# Включает UART0 (последовательный порт)
+# Нужен для Serial Console или подключения устройств по UART
+# -------->
+# dtparam=i2c_arm=on
+# Включает I2C на GPIO-пинах
+# Используется для подключения датчиков и периферии
+# -------->
+# dtoverlay=disable-bt
+# Отключает встроенный Bluetooth
+# Освобождает UART для других целей
+# Не применяется на Pi 5 (имеет другую архитектуру)
+
+
+# Добавляем отключение Bluetooth (кроме Pi 5)
+# После этого, если мы не на Pi 5 (закомментированная проверка is_pifive), мы добавляем строку 'dtoverlay=disable-bt' в /boot/firmware/config.txt, если её там нет.
+# Закомментирована проверка is_pifive, поэтому код добавления dtoverlay=disable-bt выполняется всегда.
+
+if is_pifive ; then
+  echo "# pi5: skip step"
+else
+  echo "# Add dtoverlay=disable-bt to /boot/firmware/config.txt"
+if ! grep -q 'dtoverlay=disable-bt' /boot/firmware/    config.txt; then
   echo 'dtoverlay=disable-bt' >> /boot/firmware/config.txt
 fi
+
+# dtoverlay=ov5647 (закомментировано)
+# Включает поддержку камеры OV5647
+# Раскомментировать при наличии такой камеры
+
 # fi
 
 # echo "# Add dtoverlay=ov5647 to /boot/firmware/config.txt"
@@ -232,11 +255,22 @@ fi
 #   echo 'dtoverlay=ov5647' >> /boot/firmware/config.txt
 # fi
 
+# Отключение служб Bluetooth
+# Отключаем службы hciuart (для UART Bluetooth) и bluetooth (сам Bluetooth).
+# Это предотвратит автоматический запуск этих служб при загрузке системы.
+# disable - отключает автозапуск, но службу можно запустить вручную
+
 sudo systemctl disable hciuart.service
 sudo systemctl disable bluetooth.service
 
+# Скрипт, который в зависимости от флага use_index (который устанавливается через аргументы командной строки) меняет источники пакетов на зеркала от TUNA (Tsinghua University) или оставляет по умолчанию.
+# Если use_index истинно, то:
+# a. Создаем резервные копии файлов sources.list и raspi.list, если они еще не созданы.
+# b. Записываем новые источники в /etc/apt/sources.list и /etc/apt/sources.list.d/raspi.list.
+# c. Обновляем список пакетов.
 
 # Change sources
+
 if $use_index; then
   # Backup the original sources.list file
   if ! [ -e /etc/apt/sources.list.bak ]; then
@@ -244,6 +278,7 @@ if $use_index; then
   fi
 
   # Create a new sources.list file with other mirrors, keeping the release name "bookworm"
+
   echo "Updating sources.list with other mirrors..."
   sudo sh -c 'echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian bookworm main contrib non-free non-free-firmware\ndeb https://mirrors.tuna.tsinghua.edu.cn/debian-security bookworm-security main contrib non-free non-free-firmware\ndeb https://mirrors.tuna.tsinghua.edu.cn/debian bookworm-updates main contrib non-free non-free-firmware" > /etc/apt/sources.list'
 
@@ -264,22 +299,101 @@ else
   echo "# Using default sources."
 fi
 
-
+# Установка программного обеспечения через apt
 
 # Install required software
-echo "# Install required software."
+
+echo "=== Installing Required Software ==="
+# Обновление пакетного менеджера
 sudo apt update
+# Установка обновлений системы
 sudo apt upgrade -y
+
+# Установка основных зависимостей:
+# Пакеты и их назначение:
+# libopenblas-dev - библиотека для высокопроизводительных линейных алгебраических операций
+#  -  Используется в машинном обучении и научных вычислениях
+#  -  Альтернатива BLAS/LAPACK с оптимизацией для многопоточности
+# libatlas3-base - автоматически настраиваемая система линейной алгебры
+#  -  Базовая версия библиотек BLAS и LAPACK
+#  -  Используется для математических вычислений
+# libcamera-dev - библиотека для работы с камерами в Linux
+#  -  Особенно важна для Raspberry Pi Camera Module
+#  -  Предоставляет API для управления камерами
+# python3-opencv - библиотека компьютерного зрения для Python 3
+#  -  Обработка изображений и видео
+#  -  Распознавание объектов, машинное обучение
+#  -  Работа с камерами и видеопотоками
+# portaudio19-dev - библиотека для аудио ввода/вывода
+#  -  Используется для записи и воспроизведения звука
+#  -  Необходима для аудиоприложений и голосовых интерфейсов
+
+
 sudo apt install -y libopenblas-dev libatlas3-base libcamera-dev python3-opencv portaudio19-dev
 sudo apt install -y util-linux procps hostapd iproute2 iw haveged dnsmasq iptables espeak
 
+# Пакеты и их назначение:
+# util-linux - набор системных утилит Linux
+#  -  Содержит команды like mount, fdisk, dmesg
+# procps - утилиты для мониторинга процессов
+#  -  Содержит ps, top, free, vmstat
+# hostapd - демон для создания точки доступа Wi-Fi
+#  -  Превращает Raspberry Pi в Wi-Fi роутер
+#  -  Используется для создания беспроводных сетей
+# iproute2 - современные сетевые утилиты
+#  -  Замена устаревшим ifconfig, route
+#  -  Содержит ip, ss, tc
+# iw - утилиты для настройки беспроводных сетей
+#  -  Настройка Wi-Fi интерфейсов
+#  -  Сканирование сетей, управление режимами
+# haveged - демон для увеличения энтропии системы
+#  -  Улучшает генерацию случайных чисел
+#  -  Важно для криптографических операций
+# dnsmasq - легкий DNS и DHCP сервер
+#  -  Используется для раздачи IP-адресов в локальной сети
+#  -  Кэширование DNS-запросов
+# iptables - система фильтрации сетевых пакетов
+#  -  Фаервол для настройки правил сети
+#  -  NAT, перенаправление портов
+# espeak - синтезатор речи
+#  -  Преобразование текста в речь
+#  -  Используется в голосовых интерфейсах и доступности
+
+# Проекты компьютерного зрения:
+# Для работы с камерами и обработки изображений
+# libcamera-dev python3-opencv
+
+# Создание точки доступа Wi-Fi:
+# Для превращения RPi в роутер
+# hostapd dnsmasq iptables
+
+# Машинное обучение на edge-устройствах:
+# Для нейросетей и математических вычислений
+# libopenblas-dev libatlas3-base
+
+# Голосовые приложения:
+# Для работы со звуком и речью
+# portaudio19-dev espeak
+
+
+
+
+# Код создания и активации Python виртуального окружения
+# Создаем виртуальное окружение Python с именем ugv-env, используя системные сайт-пакеты (флаг --system-site-packages).
+# Затем мы активируем это виртуальное окружение.
 
 echo "# Create a Python virtual environment."
 # Create a Python virtual environment
+
 cd $PWD
+# Создание виртуального окружения:
+# Создает изолированную среду Python
+#  --system-site-packages дает доступ к системным пакетам
 python -m venv --system-site-packages ugv-env
 
 echo "# Activate a Python virtual environment."
+
+
 
 echo "# Install dependencies from requirements.txt"
 # Install dependencies from requirements.txt
@@ -289,22 +403,37 @@ else
   sudo -H -u $USER bash -c 'source $PWD/ugv-env/bin/activate && pip install -r requirements.txt && deactivate'
 fi
 
+
+
+
 echo "# Add current user to group so it can use serial."
 sudo usermod -aG dialout $USER
+
+
 
 # Audio Config
 echo "# Audio Config."
 sudo cp -v -f /home/$(logname)/ugv_rpi/asound.conf /etc/asound.conf
+
+
 
 # OAK Config
 sudo cp -v -f /home/$(logname)/ugv_rpi/99-dai.rules /etc/udev/rules.d/99-dai.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
+
+
 echo "Setup completed. Please to reboot your Raspberry Pi for the changes to take effect."
+
+
 
 echo "Use the command below to run app.py onboot."
 
+
+
 echo "sudo chmod +x autorun.sh"
+
+
 
 echo "./autorun.sh"
