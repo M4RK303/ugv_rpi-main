@@ -392,9 +392,7 @@ cd $PWD
 python -m venv --system-site-packages ugv-env
 
 echo "# Activate a Python virtual environment."
-
-
-
+# Активируем и устанавливаем зависимости
 echo "# Install dependencies from requirements.txt"
 # Install dependencies from requirements.txt
 if $use_index; then
@@ -403,37 +401,94 @@ else
   sudo -H -u $USER bash -c 'source $PWD/ugv-env/bin/activate && pip install -r requirements.txt && deactivate'
 fi
 
-
-
+# Код добавления пользователя в группу dialout для работы с serial-портами (последовательным портам)
 
 echo "# Add current user to group so it can use serial."
 sudo usermod -aG dialout $USER
 
+# Группа dialout:
+# Предоставляет доступ к последовательным портам (serial ports)
+
+# Дополнительные группы для разработки
+# local groups=("dialout" "gpio" "i2c" "spi")
+
 
 
 # Audio Config
+# скопировать файл asound.conf из домашней директории пользователя в /etc/
+
 echo "# Audio Config."
 sudo cp -v -f /home/$(logname)/ugv_rpi/asound.conf /etc/asound.conf
 
 
 
 # OAK Config
+# Копирует правила udev для предоставления прав доступа к OAK-D камере
+# копируем файл правил udev для устройства OAK (DepthAI) и затем перезагружаем правила udev.
+# Файл 99-dai.rules содержит правила для предоставления прав доступа к устройствам OAK (например, камерам) обычным пользователям.
+# После копирования правил мы перезагружаем правила udev и запускаем триггер для применения изменений без перезагрузки.
+# Этот код обеспечивает правильную настройку прав доступа к OAK-D камере, которая является ключевым компонентом системы компьютерного зрения в проектах автономных наземных транспортных средств (UGV).
+
+# Копируем правила udev для OAK-D камеры
 sudo cp -v -f /home/$(logname)/ugv_rpi/99-dai.rules /etc/udev/rules.d/99-dai.rules
+
+# Перезагружаем правила udev
 sudo udevadm control --reload-rules
+
+# Активируем новые правила без перезагрузки
 sudo udevadm trigger
 
+# Для проектов UGV OAK-D используется для:
+#  - Компьютерного зрения - обнаружение объектов и навигация
+#  - Глубинного восприятия - 3D карта окружения
+#  - Слежения за объектами - отслеживание целей
+#  - Навигации - избегание препятствий
+#  - Картографирования - построение карты местности
 
 
 echo "Setup completed. Please to reboot your Raspberry Pi for the changes to take effect."
-
-
-
 echo "Use the command below to run app.py onboot."
-
-
-
 echo "sudo chmod +x autorun.sh"
-
-
-
 echo "./autorun.sh"
+
+echo ""
+echo "========================"
+echo "  UGV Setup Complete!   "
+echo "========================"
+
+while true; do
+    echo ""
+    echo "What would you like to do next?"
+    echo "1) Reboot now"
+    echo "2) Test autorun script"
+    echo "3) Show system status"
+    echo "4) Exit and reboot later"
+    echo ""
+    read -p "Enter your choice [1-4]: " choice
+
+    case $choice in
+        1)
+            echo "Rebooting system..."
+            sudo reboot
+            ;;
+        2)
+            echo "Testing autorun script..."
+            sudo chmod +x autorun.sh
+            ./autorun.sh
+            ;;
+        3)
+            echo "System status:"
+            echo "Python env: $(if [ -d 'ugv-env' ]; then echo 'OK'; else echo 'MISSING'; fi)"
+            echo "OAK-D rules: $(if [ -f '/etc/udev/rules.d/99-dai.rules' ]; then echo 'OK'; else echo 'MISSING'; fi)"
+            echo "Audio config: $(if [ -f '/etc/asound.conf' ]; then echo 'OK'; else echo 'MISSING'; fi)"
+            ;;
+        4)
+            echo "Exit selected."
+            echo "Remember to reboot later with: sudo reboot"
+            break
+            ;;
+        *)
+            echo "Invalid option. Please try again."
+            ;;
+    esac
+done
