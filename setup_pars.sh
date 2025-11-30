@@ -355,9 +355,9 @@ setup_oak_camera() {
 show_completion_message() {
     cat << EOF
 
-${GREEN}================================================${NC}
-${GREEN}🚀 UGV SETUP COMPLETED SUCCESSFULLY!${NC}
-${GREEN}================================================${NC}
+${GREEN}========================================${NC}
+${GREEN} UGV SETUP COMPLETED SUCCESSFULLY!${NC}
+${GREEN}========================================${NC}
 
 ${YELLOW}IMPORTANT NEXT STEPS:${NC}
 
